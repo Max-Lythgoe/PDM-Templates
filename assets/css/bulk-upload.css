@@ -1,0 +1,238 @@
+/* Bulk Upload Styles */
+.pdm-upload-container {
+	max-width: 1200px;
+	margin: 20px 0;
+}
+
+.pdm-upload-container .card {
+	padding: 20px;
+	margin-bottom: 20px;
+	background: #fff;
+	box-shadow: 0 1px 1px rgba(0,0,0,.04);
+	border: 1px solid #c3c4c7;
+}
+
+.pdm-upload-container h2 {
+	margin-top: 0;
+	padding-bottom: 10px;
+	border-bottom: 1px solid #dcdcde;
+}
+
+/* Drop Zone */
+.pdm-drop-zone {
+	border: 2px dashed #c3c4c7;
+	border-radius: 4px;
+	padding: 60px 20px;
+	text-align: center;
+	cursor: pointer;
+	transition: all 0.3s ease;
+	background: #f6f7f7;
+	position: relative;
+	user-select: none;
+}
+
+.pdm-drop-zone:hover,
+.pdm-drop-zone.dragover {
+	border-color: var(--wp-admin-theme-color, #eb6a24);
+	background: rgba(235, 106, 36, 0.05);
+	transform: scale(1.01);
+}
+
+.pdm-drop-instructions {
+	margin: 0;
+	font-size: 16px;
+	color: #646970;
+}
+
+.pdm-drop-instructions .dashicons {
+	font-size: 48px;
+	width: 48px;
+	height: 48px;
+	color: var(--wp-admin-theme-color, #eb6a24);
+	margin-bottom: 10px;
+}
+
+/* File List */
+.pdm-file-list {
+	margin: 20px 0;
+	max-height: 400px;
+	overflow-y: auto;
+}
+
+.pdm-file-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 12px;
+	margin-bottom: 8px;
+	background: #f6f7f7;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+}
+
+.pdm-file-info {
+	display: flex;
+	align-items: center;
+	flex: 1;
+}
+
+.pdm-file-icon {
+	margin-right: 12px;
+	color: var(--wp-admin-theme-color, #eb6a24);
+}
+
+.pdm-file-name {
+	font-weight: 500;
+	color: #1d2327;
+}
+
+.pdm-file-size {
+	margin-left: 10px;
+	color: #646970;
+	font-size: 12px;
+}
+
+.pdm-file-remove {
+	background: transparent;
+	border: none;
+	color: #d63638;
+	cursor: pointer;
+	padding: 4px 8px;
+	font-size: 14px;
+}
+
+.pdm-file-remove:hover {
+	color: #8a0000;
+}
+
+/* Actions */
+.pdm-actions {
+	display: flex;
+	gap: 10px;
+	margin-top: 20px;
+}
+
+.pdm-actions button {
+	min-width: 150px;
+}
+
+.pdm-actions button.button-primary {
+	background-color: var(--wp-admin-theme-color, #eb6a24);
+	border-color: var(--wp-admin-theme-color-darker-10, #d46224);
+}
+
+.pdm-actions button.button-primary:hover,
+.pdm-actions button.button-primary:focus {
+	background-color: var(--wp-admin-theme-color-darker-10, #d46224);
+	border-color: var(--wp-admin-theme-color-darker-20, #d35918);
+}
+
+.pdm-actions button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* Progress Container */
+.pdm-progress-container {
+	margin-top: 20px;
+}
+
+.pdm-progress {
+	margin: 20px 0;
+}
+
+.pdm-progress-bar {
+	width: 100%;
+	height: 30px;
+	background: #f0f0f1;
+	border-radius: 4px;
+	overflow: hidden;
+	position: relative;
+}
+
+.pdm-progress-fill {
+	height: 100%;
+	background: linear-gradient(90deg, var(--wp-admin-theme-color, #eb6a24) 0%, var(--wp-admin-theme-color-darker-20, #d35918) 100%);
+	transition: width 0.3s ease;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: #fff;
+	font-weight: 500;
+}
+
+.pdm-progress-text {
+	text-align: center;
+	margin-top: 10px;
+	font-weight: 500;
+	color: #1d2327;
+}
+
+/* Results List */
+.pdm-results-list {
+	margin-top: 20px;
+}
+
+.pdm-result-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 12px;
+	margin-bottom: 8px;
+	border-radius: 4px;
+	border: 1px solid;
+}
+
+.pdm-result-item.success {
+	background: #e7f5e9;
+	border-color: #00a32a;
+}
+
+.pdm-result-item.error {
+	background: #fcf0f1;
+	border-color: #d63638;
+}
+
+.pdm-result-info {
+	display: flex;
+	align-items: center;
+	flex: 1;
+}
+
+.pdm-result-icon {
+	margin-right: 10px;
+	font-size: 20px;
+}
+
+.pdm-result-item.success .pdm-result-icon {
+	color: #00a32a;
+}
+
+.pdm-result-item.error .pdm-result-icon {
+	color: #d63638;
+}
+
+.pdm-result-title {
+	font-weight: 500;
+}
+
+.pdm-result-message {
+	font-size: 12px;
+	color: #646970;
+	margin-top: 4px;
+}
+
+.pdm-result-actions a {
+	text-decoration: none;
+}
+
+/* Responsive */
+@media screen and (max-width: 782px) {
+	.pdm-actions {
+		flex-direction: column;
+	}
+	
+	.pdm-actions button {
+		width: 100%;
+	}
+}
