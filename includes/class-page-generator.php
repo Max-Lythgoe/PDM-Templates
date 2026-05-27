@@ -556,6 +556,17 @@ class Page_Generator
             $this->update_section_inner_content($block);
         }
 
+        // Add section heading as block metadata name (shows in editor breadcrumbs)
+        if (! empty($section['heading'])) {
+            if (! isset($block['attrs'])) {
+                $block['attrs'] = array();
+            }
+            if (! isset($block['attrs']['metadata'])) {
+                $block['attrs']['metadata'] = array();
+            }
+            $block['attrs']['metadata']['name'] = $section['heading'];
+        }
+
         return $block;
     }
 

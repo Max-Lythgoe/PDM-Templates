@@ -31,6 +31,9 @@ class Template_Options
         // Add default template content to new posts
         add_filter('default_content', array($this, 'insert_default_template'), 10, 2);
         add_filter('wp_insert_post_data', array($this, 'insert_template_on_autosave'), 10, 2);
+
+        // Register REST filters after CPTs are registered (priority 20)
+        add_action('init', array($this, 'register_rest_filters'), 20);
     }
 
     /**
