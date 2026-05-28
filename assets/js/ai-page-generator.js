@@ -233,16 +233,17 @@ this.form              = $('#pdm-ai-generator-form');
 			this.result.hide().html('');
 
 			const formData = {
-				action:        'pdm_ai_generate_page',
-				nonce:         pdmAIGenerator.nonce,
-				page_name:     $('#pdm-ai-page-name').val(),
-				description:   $('#pdm-ai-description').val(),
-				template_id:   $('#pdm-ai-template').val(),
-				post_type:     $('#pdm-ai-post-type').val(),
-				post_status:   $('#pdm-ai-post-status').val(),
-				image_mapping: this.imageMappingField.val(),
-				auto_images:   this.autoImagesCheck.prop('checked') ? 1 : 0,
-				tone:          (pdmAIGenerator.tones[this.toneSlider.val()] || {}).slug || 'friendly',
+				action:          'pdm_ai_generate_page',
+				nonce:           pdmAIGenerator.nonce,
+				page_name:       $('#pdm-ai-page-name').val(),
+				description:     $('#pdm-ai-description').val(),
+				template_id:     $('#pdm-ai-template').val(),
+				post_type:       $('#pdm-ai-post-type').val(),
+				post_status:     $('#pdm-ai-post-status').val(),
+				image_mapping:   this.imageMappingField.val(),
+				auto_images:     this.autoImagesCheck.prop('checked') ? 1 : 0,
+				tone:            (pdmAIGenerator.tones[this.toneSlider.val()] || {}).slug || 'friendly',
+				is_landing_page: $('#pdm-ai-landing-page').prop('checked') ? 1 : 0,
 			};
 
 			$.ajax({

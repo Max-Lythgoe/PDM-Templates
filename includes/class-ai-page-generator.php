@@ -292,6 +292,21 @@ class AI_Page_Generator
                                     </select>
                                 </td>
                             </tr>
+
+                            <tr>
+                                <th scope="row">
+                                    <?php esc_html_e('Landing Page?', 'pdm-templates'); ?>
+                                </th>
+                                <td>
+                                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                        <input type="checkbox" id="pdm-ai-landing-page" name="is_landing_page" value="1">
+                                        <strong><?php esc_html_e('This is a landing page', 'pdm-templates'); ?></strong>
+                                    </label>
+                                    <p class="description" style="margin-top:6px;">
+                                        <?php esc_html_e('Removes all outbound links and phone number references from the content — keeps visitors on-page for accurate lead tracking.', 'pdm-templates'); ?>
+                                    </p>
+                                </td>
+                            </tr>
                         </table>
 
                         <!-- Image slots — populated by JS when a template is selected -->
@@ -432,6 +447,7 @@ class AI_Page_Generator
         $post_type    = sanitize_key($_POST['post_type'] ?? 'page');
         $post_status  = sanitize_key($_POST['post_status'] ?? 'draft');
         $tone         = sanitize_key($_POST['tone'] ?? 'friendly');
+        $is_landing   = ! empty($_POST['is_landing_page']);
         $image_mapping_raw = isset($_POST['image_mapping']) ? wp_unslash($_POST['image_mapping']) : '{}';
         $auto_images  = ! empty($_POST['auto_images']);
 
@@ -495,7 +511,7 @@ class AI_Page_Generator
         $template_structure = $this->analyze_template_structure($template);
 
         // Build the AI prompt (includes auto-detected company info)
-        $prompt = $this->build_prompt($page_name, $description, $template_structure, $post_type, $tone);
+        $prompt = $this->build_prompt($page_name, $description, $template_structure, $post_type, $tone, $is_landing);
 
         // Call Gemini
         $ai_response = $this->call_gemini_api($api_key, $prompt);
@@ -973,7 +989,7 @@ class AI_Page_Generator
      * @param array  $template_structure Analysed template structure.
      * @return string Prompt string.
      */
-    private function build_prompt($page_name, $description, $template_structure, $post_type = 'page', $tone = 'friendly')
+    private function build_prompt($page_name, $description, $template_structure, $post_type = 'page', $tone = 'friendly', $is_landing = false)
     {
         $tone_descriptions = array(
             'friendly'     => 'Friendly — Warm, conversational, and inviting. Write like you are speaking directly to the reader.',
@@ -1024,7 +1040,7 @@ class AI_Page_Generator
         foreach ($company_context['locations'] as $i => $loc) {
             $prefix = count($company_context['locations']) > 1 ? 'Location ' . ($i + 1) . ' — ' : '';
             if (! empty($loc['name']))    $context_lines[] = $prefix . 'Location name: ' . $loc['name'];
-            if (! empty($loc['phone']))   $context_lines[] = $prefix . 'Phone: ' . $loc['phone'];
+            if (! $is_landing && ! empty($loc['phone']))   $context_lines[] = $prefix . 'Phone: ' . $loc['phone'];
             if (! empty($loc['email']))   $context_lines[] = $prefix . 'Email: ' . $loc['email'];
             if (! empty($loc['address'])) $context_lines[] = $prefix . 'Address: ' . $loc['address'];
         }
@@ -1066,7 +1082,12 @@ class AI_Page_Generator
         }
         $pages_block = empty($pages_lines)
             ? ''
-            : "Site content (use for context and linking):\n" . implode("\n", $pages_lines) . "\n";
+            : 'Site content (use for context' . ($is_landing ? ' only — do NOT add any links' : ' and linking') . "):\n" . implode("\n", $pages_lines) . "\n";
+
+        // Build dynamic rules that differ for landing pages vs standard pages
+        $contact_rules = $is_landing
+            ? "- This is a LANDING PAGE: do NOT include any hyperlinks or anchor tags anywhere in the content.\n- Do NOT reference the company phone number anywhere in the content — keep visitors on-page for lead tracking."
+            : "- Weave the company name, phone number, and email naturally into the content ONLY IF relevant\n- Where relevant, link to site pages from \"Site content\" above using HTML anchor tags: <a href=\"URL\">link text</a>";
 
         /* Build the full prompt. The JSON schema is embedded so the model knows exactly what to produce. */
         return <<<PROMPT
@@ -1079,6 +1100,7 @@ Page title: {$page_name}
 {$sections_instruction}
 
 Respond with ONLY a single valid JSON object — no markdown fences, no explanatory text, nothing else.
+
 
 JSON schema:
 {
@@ -1102,9 +1124,12 @@ Rules:
 - Use the title exactly: "{$page_name}"
 - Use the page type ("{$pt_label}") to guide the focus and structure of the content
 - Writing tone: {$tone_instruction}
-- Weave the company name, phone number, and email naturally into the content where relevant
+- Write in a natural, human voice. Vary sentence length and structure. NEVER use the word "Imagine" anywhere in the content — not at the start of a sentence, not mid-sentence, not at all. Also never use these openers: "Are you looking for", "In today's world", "Whether you", "Look no further", "Picture yourself", "Envision", or "At [Company]".
+- Avoid AI buzzwords: do not use "seamless", "robust", "leverage", "cutting-edge", "comprehensive", "tailored solutions", "empower", "holistic", or "game-changing". Write plainly and specifically.
+- Do not start two consecutive sentences with the same word.
+- Write as a knowledgeable human would — concrete, specific, and direct.
+{$contact_rules}
 - You may reference the city and state/region the business is located in, but do NOT include the full street address in any content
-- Where relevant, link to site pages from "Site content" above using HTML anchor tags: <a href="URL">link text</a>
 - paragraphs arrays are used for normal content sections
 - accordions arrays (with isFAQ: true) are used for FAQ sections only
 - Each paragraph should be 2–4 sentences long
