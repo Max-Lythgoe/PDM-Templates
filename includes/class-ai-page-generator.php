@@ -35,6 +35,7 @@ class AI_Page_Generator
         add_action('admin_enqueue_scripts', array($this, 'enqueue_scripts'));
         add_action('wp_ajax_pdm_ai_generate_page', array($this, 'handle_generate_page'));
         add_action('wp_ajax_pdm_ai_get_template_info', array($this, 'handle_get_template_info'));
+        add_action('wp_ajax_pdm_ai_search_pages', array($this, 'handle_search_pages'));
     }
 
     /**
@@ -295,6 +296,30 @@ class AI_Page_Generator
 
                             <tr>
                                 <th scope="row">
+                                    <label for="pdm-ai-ref-search">
+                                        <?php esc_html_e('Reference Pages', 'pdm-templates'); ?>
+                                    </label>
+                                </th>
+                                <td>
+                                    <div class="pdm-ai-ref-wrap">
+                                        <input
+                                            type="text"
+                                            id="pdm-ai-ref-search"
+                                            class="regular-text pdm-ai-ref-search-input"
+                                            placeholder="<?php esc_attr_e('Search pages…', 'pdm-templates'); ?>"
+                                            autocomplete="off">
+                                        <div id="pdm-ai-ref-results" class="pdm-ai-ref-results" style="display:none;"></div>
+                                        <div id="pdm-ai-ref-chips" class="pdm-ai-ref-chips"></div>
+                                        <input type="hidden" id="pdm-ai-ref-ids" name="ref_page_ids" value="">
+                                    </div>
+                                    <p class="description" style="margin-top:6px;">
+                                        <?php esc_html_e('Optional — select up to 3 pages. The AI will read their content as reference to match style, tone, or detail.', 'pdm-templates'); ?>
+                                    </p>
+                                </td>
+                            </tr>
+
+                            <tr>
+                                <th scope="row">
                                     <?php esc_html_e('Landing Page?', 'pdm-templates'); ?>
                                 </th>
                                 <td>
@@ -448,6 +473,8 @@ class AI_Page_Generator
         $post_status  = sanitize_key($_POST['post_status'] ?? 'draft');
         $tone         = sanitize_key($_POST['tone'] ?? 'friendly');
         $is_landing   = ! empty($_POST['is_landing_page']);
+        $ref_ids_raw  = isset($_POST['ref_page_ids']) ? sanitize_text_field(wp_unslash($_POST['ref_page_ids'])) : '';
+        $ref_page_ids = array_filter(array_slice(array_map('absint', explode(',', $ref_ids_raw)), 0, 3));
         $image_mapping_raw = isset($_POST['image_mapping']) ? wp_unslash($_POST['image_mapping']) : '{}';
         $auto_images  = ! empty($_POST['auto_images']);
 
@@ -511,7 +538,7 @@ class AI_Page_Generator
         $template_structure = $this->analyze_template_structure($template);
 
         // Build the AI prompt (includes auto-detected company info)
-        $prompt = $this->build_prompt($page_name, $description, $template_structure, $post_type, $tone, $is_landing);
+        $prompt = $this->build_prompt($page_name, $description, $template_structure, $post_type, $tone, $is_landing, $ref_page_ids);
 
         // Call Gemini
         $ai_response = $this->call_gemini_api($api_key, $prompt);
@@ -585,6 +612,56 @@ class AI_Page_Generator
             'image_requirements'    => $image_requirements,
             'image_count'           => count($image_requirements),
         ));
+    }
+
+    // =========================================================================
+    // Page Search AJAX
+    // =========================================================================
+
+    /**
+     * AJAX handler: search published posts/pages by keyword for the reference picker.
+     */
+    public function handle_search_pages()
+    {
+        if (! check_ajax_referer('pdm_ai_generate', 'nonce', false)) {
+            wp_send_json_error(array('message' => __('Security check failed.', 'pdm-templates')));
+        }
+
+        if (! current_user_can('edit_posts')) {
+            wp_send_json_error(array('message' => __('Permission denied.', 'pdm-templates')));
+        }
+
+        $query = sanitize_text_field(wp_unslash($_POST['query'] ?? ''));
+        if (strlen($query) < 2) {
+            wp_send_json_success(array());
+        }
+
+        $excluded_types = array('attachment', 'pdm_template', 'revision', 'nav_menu_item', 'custom_css', 'customize_changeset', 'oembed_cache', 'user_request', 'wp_block', 'wp_template', 'wp_template_part', 'wp_global_styles', 'wp_navigation', 'wp_font_family', 'wp_font_face');
+        $post_types     = array_diff(
+            array_keys(get_post_types(array('public' => true))),
+            $excluded_types
+        );
+
+        $results = get_posts(array(
+            'post_type'      => array_values($post_types),
+            'post_status'    => 'publish',
+            's'              => $query,
+            'numberposts'    => 10,
+            'orderby'        => 'relevance',
+        ));
+
+        $data = array();
+        foreach ($results as $post) {
+            $pt_obj  = get_post_type_object($post->post_type);
+            $pt_label = $pt_obj ? $pt_obj->labels->singular_name : $post->post_type;
+            $data[] = array(
+                'id'    => $post->ID,
+                'title' => get_the_title($post->ID),
+                'type'  => $pt_label,
+            );
+        }
+
+        wp_send_json_success($data);
     }
 
     // =========================================================================
@@ -679,6 +756,71 @@ class AI_Page_Generator
         }
 
         return $pages;
+    }
+
+    // =========================================================================
+    // Reference Page Content
+    // =========================================================================
+
+    /**
+     * Extract clean, readable text from a post's block content for AI reference.
+     *
+     * Strips block markup, shortcodes, and HTML tags, then trims to a reasonable
+     * token limit so it doesn't bloat the prompt.
+     *
+     * @param array $post_ids Array of post IDs (max 3).
+     * @return string Formatted reference block or empty string.
+     */
+    private function get_reference_content(array $post_ids)
+    {
+        if (empty($post_ids)) {
+            return '';
+        }
+
+        $blocks = array();
+        foreach (array_slice($post_ids, 0, 3) as $post_id) {
+            $post = get_post(absint($post_id));
+            if (! $post || ! in_array(get_post_status($post_id), array('publish', 'draft', 'private'), true)) {
+                continue;
+            }
+
+            if (! current_user_can('read_post', $post_id)) {
+                continue;
+            }
+
+            $raw     = $post->post_content;
+            // Render Gutenberg blocks to HTML first so block attributes don't become noise
+            if (function_exists('do_blocks')) {
+                $raw = do_blocks($raw);
+            }
+            // Remove any remaining HTML comments and shortcodes
+            $raw     = preg_replace('/<!--.*?-->/s', '', $raw);
+            $raw     = strip_shortcodes($raw);
+            $raw     = wp_strip_all_tags($raw);
+            // Collapse whitespace
+            $raw     = preg_replace('/\s+/', ' ', $raw);
+            $raw     = trim($raw);
+
+            if (empty($raw)) {
+                continue;
+            }
+
+            // Limit each page to ~600 words to avoid bloating the prompt
+            $words   = explode(' ', $raw);
+            if (count($words) > 600) {
+                $raw = implode(' ', array_slice($words, 0, 600)) . '…';
+            }
+
+            $title    = get_the_title($post_id);
+            $blocks[] = "--- Reference: \"{$title}\" ---\n{$raw}";
+        }
+
+        if (empty($blocks)) {
+            return '';
+        }
+
+        return "IMPORTANT — Reference page content (you MUST draw on this):\nThe following pages were selected as references. Extract their specific services, features, facts, and key messages and incorporate them directly into the new page content. Do NOT ignore this section. Do NOT copy sentences verbatim — rewrite in the target tone, but preserve all specific details, offerings, and facts:\n"
+            . implode("\n\n", $blocks) . "\n";
     }
 
     // =========================================================================
@@ -989,7 +1131,7 @@ class AI_Page_Generator
      * @param array  $template_structure Analysed template structure.
      * @return string Prompt string.
      */
-    private function build_prompt($page_name, $description, $template_structure, $post_type = 'page', $tone = 'friendly', $is_landing = false)
+    private function build_prompt($page_name, $description, $template_structure, $post_type = 'page', $tone = 'friendly', $is_landing = false, $ref_page_ids = array())
     {
         $tone_descriptions = array(
             'friendly'     => 'Friendly — Warm, conversational, and inviting. Write like you are speaking directly to the reader.',
@@ -1084,7 +1226,8 @@ class AI_Page_Generator
             ? ''
             : 'Site content (use for context' . ($is_landing ? ' only — do NOT add any links' : ' and linking') . "):\n" . implode("\n", $pages_lines) . "\n";
 
-        // Build dynamic rules that differ for landing pages vs standard pages
+        // Build reference content block from selected pages
+        $reference_block = $this->get_reference_content($ref_page_ids);
         $contact_rules = $is_landing
             ? "- This is a LANDING PAGE: do NOT include any hyperlinks or anchor tags anywhere in the content.\n- Do NOT reference the company phone number anywhere in the content — keep visitors on-page for lead tracking."
             : "- Weave the company name, phone number, and email naturally into the content ONLY IF relevant\n- Where relevant, link to site pages from \"Site content\" above using HTML anchor tags: <a href=\"URL\">link text</a>";
@@ -1096,7 +1239,7 @@ You are a professional web content writer. Generate structured content for a Wor
 Page title: {$page_name}
 {$pt_note}Content brief: {$description}
 
-{$company_block}{$pages_block}{$hero_note}Generate content for exactly {$section_count} section(s) as follows:
+{$company_block}{$pages_block}{$reference_block}{$hero_note}Generate content for exactly {$section_count} section(s) as follows:
 {$sections_instruction}
 
 Respond with ONLY a single valid JSON object — no markdown fences, no explanatory text, nothing else.

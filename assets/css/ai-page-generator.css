@@ -335,3 +335,118 @@
 .pdm-ai-tone-info strong {
     color: var(--wp-admin-theme-color);
 }
+
+/* ---- Reference page picker ---- */
+.pdm-ai-ref-wrap {
+    max-width: 480px;
+    position: relative;
+}
+
+/* Allow the dropdown to overflow the table cell */
+.pdm-ai-generator-form-wrap .form-table td:has(.pdm-ai-ref-wrap) {
+    overflow: visible;
+}
+
+.pdm-ai-ref-search-input {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+}
+
+.pdm-ai-ref-results {
+    position: absolute;
+    z-index: 999;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #8c8f94;
+    border-top: none;
+    border-radius: 0 0 3px 3px;
+    box-shadow: 0 4px 10px rgba(0,0,0,.12);
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.pdm-ai-ref-results ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.pdm-ai-ref-result-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 13px;
+}
+
+.pdm-ai-ref-result-item:last-child {
+    border-bottom: none;
+}
+
+.pdm-ai-ref-result-item:hover {
+    background: #f0f6fc;
+}
+
+.pdm-ai-ref-result-title {
+    flex: 1;
+    color: #1d2327;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pdm-ai-ref-result-type {
+    font-size: 11px;
+    color: #8c8f94;
+    background: #f6f7f7;
+    border: 1px solid #ddd;
+    border-radius: 2px;
+    padding: 1px 5px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.pdm-ai-ref-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.pdm-ai-ref-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #e8f0fe;
+    border: 1px solid #b8d0f7;
+    border-radius: 20px;
+    padding: 3px 10px 3px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #1d2327;
+    max-width: 260px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pdm-ai-ref-chip-remove {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    color: #606770;
+    padding: 0 0 0 2px;
+    flex-shrink: 0;
+}
+
+.pdm-ai-ref-chip-remove:hover {
+    color: #d63638;
+}

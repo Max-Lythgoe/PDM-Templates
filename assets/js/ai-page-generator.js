@@ -31,6 +31,12 @@ this.form              = $('#pdm-ai-generator-form');
 		this.toneSlider        = $('#pdm-ai-tone');
 		this.toneName          = $('#pdm-ai-tone-name');
 		this.toneDesc          = $('#pdm-ai-tone-desc');
+		this.refSearch         = $('#pdm-ai-ref-search');
+		this.refResults        = $('#pdm-ai-ref-results');
+		this.refChips          = $('#pdm-ai-ref-chips');
+		this.refIdsField       = $('#pdm-ai-ref-ids');
+		this.refSelected       = {}; // { id: title }
+		this.refSearchTimer    = null;
 
 			this.bindEvents();
 			this.handleToneChange(); // set initial description
@@ -40,6 +46,12 @@ this.form              = $('#pdm-ai-generator-form');
 			this.form.on('submit', this.handleSubmit.bind(this));
 			this.templateSelect.on('change', this.handleTemplateChange.bind(this));		this.autoImagesCheck.on('change', this.handleAutoImagesToggle.bind(this));
 			this.toneSlider.on('input', this.handleToneChange.bind(this));
+			this.refSearch.on('input', this.handleRefSearchInput.bind(this));
+			this.refSearch.on('blur', function () {
+				setTimeout(function () { AIGenerator.refResults.hide(); }, 200);
+			});
+			$(document).on('click', '.pdm-ai-ref-result-item', this.handleRefSelect.bind(this));
+			$(document).on('click', '.pdm-ai-ref-chip-remove', this.handleRefRemove.bind(this));
 			// Delegate image slot button events
 			$(document).on('click', '.pdm-ai-slot-select', this.handleSelectImage.bind(this));
 			$(document).on('click', '.pdm-ai-slot-remove', this.handleRemoveImage.bind(this));
@@ -58,6 +70,98 @@ this.form              = $('#pdm-ai-generator-form');
 			const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--wp-admin-theme-color').trim() || '#2271b1';
 			this.toneSlider.css('background',
 				'linear-gradient(to right, ' + accentColor + ' ' + pct + '%, #ddd ' + pct + '%)');		},
+
+		// ---- Reference page search -----------------------------------------
+
+		handleRefSearchInput: function () {
+			const val = $.trim(this.refSearch.val());
+			clearTimeout(this.refSearchTimer);
+
+			if (val.length < 2) {
+				this.refResults.hide().empty();
+				return;
+			}
+
+			this.refSearchTimer = setTimeout(function () {
+				$.post(pdmAIGenerator.ajaxUrl, {
+					action: 'pdm_ai_search_pages',
+					nonce:  pdmAIGenerator.nonce,
+					query:  val,
+				}).done(function (response) {
+					if (! response.success || ! response.data.length) {
+						AIGenerator.refResults.hide().empty();
+						return;
+					}
+					const items = response.data.filter(function (item) {
+						return ! AIGenerator.refSelected[item.id];
+					});
+					if (! items.length) {
+						AIGenerator.refResults.hide().empty();
+						return;
+					}
+					const $ul = $('<ul>');
+					items.forEach(function (item) {
+						$('<li>')
+							.addClass('pdm-ai-ref-result-item')
+							.attr('data-id', item.id)
+							.attr('data-title', item.title)
+							.html('<span class="pdm-ai-ref-result-title">' + AIGenerator.escHtml(item.title) + '</span>'
+								+ '<span class="pdm-ai-ref-result-type">' + AIGenerator.escHtml(item.type) + '</span>')
+							.appendTo($ul);
+					});
+					AIGenerator.refResults.empty().append($ul).show();
+				});
+			}, 300);
+		},
+
+		handleRefSelect: function (e) {
+			const $item = $(e.currentTarget);
+			const id    = parseInt($item.data('id'), 10);
+			const title = $item.data('title');
+
+			if (Object.keys(this.refSelected).length >= 3) {
+				return; // max 3
+			}
+
+			this.refSelected[id] = title;
+			this.refResults.hide().empty();
+			this.refSearch.val('');
+			this.renderRefChips();
+			this.updateRefIdsField();
+
+			if (Object.keys(this.refSelected).length >= 3) {
+				this.refSearch.prop('disabled', true).attr('placeholder', 'Maximum 3 pages selected');
+			}
+		},
+
+		handleRefRemove: function (e) {
+			const id = parseInt($(e.currentTarget).data('id'), 10);
+			delete this.refSelected[id];
+			this.renderRefChips();
+			this.updateRefIdsField();
+			this.refSearch.prop('disabled', false).attr('placeholder', pdmAIGenerator.strings.refSearchPlaceholder || 'Search pages\u2026');
+		},
+
+		renderRefChips: function () {
+			this.refChips.empty();
+			const self = this;
+			Object.keys(this.refSelected).forEach(function (id) {
+				const title = self.refSelected[id];
+				$('<span>')
+					.addClass('pdm-ai-ref-chip')
+					.html(self.escHtml(title)
+						+ '<button type="button" class="pdm-ai-ref-chip-remove" data-id="' + id + '" aria-label="Remove">&times;</button>')
+					.appendTo(self.refChips);
+			});
+		},
+
+		updateRefIdsField: function () {
+			this.refIdsField.val(Object.keys(this.refSelected).join(','));
+		},
+
+		escHtml: function (str) {
+			return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+		},
 
 		// ---- Auto-images toggle --------------------------------------------
 
@@ -244,6 +348,7 @@ this.form              = $('#pdm-ai-generator-form');
 				auto_images:     this.autoImagesCheck.prop('checked') ? 1 : 0,
 				tone:            (pdmAIGenerator.tones[this.toneSlider.val()] || {}).slug || 'friendly',
 				is_landing_page: $('#pdm-ai-landing-page').prop('checked') ? 1 : 0,
+				ref_page_ids:    this.refIdsField.val(),
 			};
 
 			$.ajax({
