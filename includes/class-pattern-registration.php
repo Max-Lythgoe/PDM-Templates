@@ -46,13 +46,22 @@ class Pattern_Registration
      */
     public function register_patterns()
     {
-        // Get all templates that should be registered as patterns
+        // Get all templates that should be registered as patterns (including starter patterns)
         $templates = get_posts(array(
             'post_type'      => 'pdm_template',
             'posts_per_page' => -1,
             'post_status'    => 'publish',
-            'meta_key'       => '_pdm_register_as_pattern',
-            'meta_value'     => '1',
+            'meta_query'     => array(
+                'relation' => 'OR',
+                array(
+                    'key'   => '_pdm_register_as_pattern',
+                    'value' => '1',
+                ),
+                array(
+                    'key'   => '_pdm_show_as_starter_pattern',
+                    'value' => '1',
+                ),
+            ),
         ));
 
         foreach ($templates as $template) {
@@ -90,12 +99,19 @@ class Pattern_Registration
             'viewportWidth' => 1400,
         );
 
-        // Add post type if set as default
-        $is_default = get_post_meta($template->ID, '_pdm_set_as_default', true);
-        $default_for = get_post_meta($template->ID, '_pdm_default_for_post_type', true);
+        // Make the template a starter pattern (overall or for a specific post type)
+        $show_as_starter = get_post_meta($template->ID, '_pdm_show_as_starter_pattern', true);
+        $starter_for = get_post_meta($template->ID, '_pdm_starter_for_post_type', true);
 
-        if ($is_default === '1' && $default_for) {
-            $pattern_properties['postTypes'] = array($default_for);
+        if ($show_as_starter === '1') {
+            // Declare core/post-content so the pattern is offered as starter content
+            // when creating new content in the block editor.
+            $pattern_properties['blockTypes'] = array('core/post-content');
+
+            // Optional: restrict to a single post type. Empty = all post types.
+            if ($starter_for) {
+                $pattern_properties['postTypes'] = array($starter_for);
+            }
         }
 
         register_block_pattern($pattern_name, $pattern_properties);

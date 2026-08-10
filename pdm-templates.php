@@ -3,13 +3,15 @@
 /**
  * Plugin Name: PDM Templates
  * Description: Advanced template editor with block patterns, default templates, and Word document conversion
- * Version: 1.2.0
+ * Version: 1.3.0
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * Author: Performance Driven Marketing
+ * Author URI: https://performancedrivenmarketing.com
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: pdm-templates
+ * Requires Plugins:  pdm-plugins-manager
  */
 
 namespace PDM\Templates;
@@ -18,6 +20,24 @@ namespace PDM\Templates;
 if (! defined('ABSPATH')) {
     exit;
 }
+
+// -----------------------------------------------------------------------
+// Dependency: requires PDM Plugins Manager
+// -----------------------------------------------------------------------
+add_action('admin_init', function () {
+    if (! function_exists('is_plugin_active')) {
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+    }
+    if (! is_plugin_active('pdm-plugins-manager/pdm-plugins-manager.php')) {
+        deactivate_plugins(plugin_basename(__FILE__), true);
+        add_action('admin_notices', function () {
+            echo '<div class="notice notice-error"><p>This plugin requires <strong>PDM Plugins Manager</strong> to be installed and activated. It has been deactivated.</p></div>';
+        });
+        if (isset($_GET['activate'])) {
+            unset($_GET['activate']);
+        }
+    }
+}, 0);
 
 // -----------------------------------------------------------------------
 // Plugin Update Checker

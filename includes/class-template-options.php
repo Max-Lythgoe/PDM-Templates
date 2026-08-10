@@ -27,25 +27,6 @@ class Template_Options
         add_action('add_meta_boxes', array($this, 'add_meta_boxes'));
         add_action('save_post_pdm_template', array($this, 'save_meta_boxes'), 10, 2);
         add_action('admin_enqueue_scripts', array($this, 'enqueue_scripts'));
-
-        // Add default template content to new posts
-        add_filter('default_content', array($this, 'insert_default_template'), 10, 2);
-        add_filter('wp_insert_post_data', array($this, 'insert_template_on_autosave'), 10, 2);
-
-        // Register REST filters after CPTs are registered (priority 20)
-        add_action('init', array($this, 'register_rest_filters'), 20);
-    }
-
-    /**
-     * Register REST API filters for all public post types
-     */
-    public function register_rest_filters()
-    {
-        $post_types = get_post_types(array('public' => true, 'show_in_rest' => true), 'names');
-
-        foreach ($post_types as $post_type) {
-            add_filter("rest_pre_insert_{$post_type}", array($this, 'insert_template_via_rest'), 10, 2);
-        }
     }
 
     /**
@@ -74,8 +55,8 @@ class Template_Options
 
         // Get current values
         $register_as_pattern = get_post_meta($post->ID, '_pdm_register_as_pattern', true);
-        $set_as_default = get_post_meta($post->ID, '_pdm_set_as_default', true);
-        $default_for_post_type = get_post_meta($post->ID, '_pdm_default_for_post_type', true);
+        $show_as_starter = get_post_meta($post->ID, '_pdm_show_as_starter_pattern', true);
+        $starter_for_post_type = get_post_meta($post->ID, '_pdm_starter_for_post_type', true);
 
         // Get all public post types
         $post_types = get_post_types(array('public' => true), 'objects');
@@ -93,36 +74,38 @@ class Template_Options
 
             <p>
                 <label>
-                    <input type="checkbox" name="pdm_set_as_default" value="1" <?php checked($set_as_default, '1'); ?> id="pdm-set-as-default" />
-                    <?php esc_html_e('Set as Default Template', 'pdm-templates'); ?>
+                    <input type="checkbox" name="pdm_show_as_starter_pattern" value="1" <?php checked($show_as_starter, '1'); ?> id="pdm-show-as-starter-pattern" />
+                    <?php esc_html_e('Show as Starter Pattern', 'pdm-templates'); ?>
                 </label>
                 <br>
-                <span class="description"><?php esc_html_e('Use this as a default template for a post type', 'pdm-templates'); ?></span>
+                <span class="description"><?php esc_html_e('Offer this template as starter content when creating new items in the block editor', 'pdm-templates'); ?></span>
             </p>
 
-            <p class="pdm-default-post-type-field" style="<?php echo $set_as_default !== '1' ? 'display: none;' : ''; ?>">
-                <label for="pdm_default_for_post_type">
-                    <?php esc_html_e('Default for Post Type:', 'pdm-templates'); ?>
+            <p class="pdm-starter-post-type-field" style="<?php echo $show_as_starter !== '1' ? 'display: none;' : ''; ?>">
+                <label for="pdm_starter_for_post_type">
+                    <?php esc_html_e('Starter for Post Type (optional):', 'pdm-templates'); ?>
                 </label>
-                <select name="pdm_default_for_post_type" id="pdm_default_for_post_type" style="width: 100%;">
-                    <option value=""><?php esc_html_e('— Select Post Type —', 'pdm-templates'); ?></option>
+                <select name="pdm_starter_for_post_type" id="pdm_starter_for_post_type" style="width: 100%;">
+                    <option value=""><?php esc_html_e('— All Post Types —', 'pdm-templates'); ?></option>
                     <?php foreach ($post_types as $pt_slug => $pt_object) : ?>
-                        <option value="<?php echo esc_attr($pt_slug); ?>" <?php selected($default_for_post_type, $pt_slug); ?>>
+                        <option value="<?php echo esc_attr($pt_slug); ?>" <?php selected($starter_for_post_type, $pt_slug); ?>>
                             <?php echo esc_html($pt_object->labels->singular_name); ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
+                <br>
+                <span class="description"><?php esc_html_e('Leave as "All Post Types" to offer it everywhere.', 'pdm-templates'); ?></span>
             </p>
 
             <?php
-            // Show warning if another template is set as default for the same post type
-            if ($set_as_default === '1' && $default_for_post_type) {
-                $other_default = $this->get_default_template_for_post_type($default_for_post_type, $post->ID);
+            // Show a note if another template is already a starter pattern for the same post type
+            if ($show_as_starter === '1' && $starter_for_post_type) {
+                $other_default = $this->get_starter_pattern_for_post_type($starter_for_post_type, $post->ID);
                 if ($other_default) {
                     echo '<p class="pdm-warning" style="color: #d63638; font-size: 12px;">';
                     printf(
                         /* translators: %s: template name */
-                        esc_html__('Warning: "%s" is already set as default for this post type. Saving will replace it.', 'pdm-templates'),
+                        esc_html__('Note: "%s" is also shown as a starter pattern for this post type.', 'pdm-templates'),
                         esc_html(get_the_title($other_default))
                     );
                     echo '</p>';
@@ -134,13 +117,13 @@ class Template_Options
     }
 
     /**
-     * Get the default template for a post type
+     * Get a starter pattern template for a post type
      *
      * @param string $post_type Post type slug.
      * @param int    $exclude   Post ID to exclude from search.
      * @return int|false Template post ID or false if not found.
      */
-    public function get_default_template_for_post_type($post_type, $exclude = 0)
+    public function get_starter_pattern_for_post_type($post_type, $exclude = 0)
     {
         $args = array(
             'post_type'      => 'pdm_template',
@@ -149,11 +132,11 @@ class Template_Options
             'meta_query'     => array(
                 'relation' => 'AND',
                 array(
-                    'key'   => '_pdm_set_as_default',
+                    'key'   => '_pdm_show_as_starter_pattern',
                     'value' => '1',
                 ),
                 array(
-                    'key'   => '_pdm_default_for_post_type',
+                    'key'   => '_pdm_starter_for_post_type',
                     'value' => $post_type,
                 ),
             ),
@@ -195,42 +178,21 @@ class Template_Options
         $register_as_pattern = isset($_POST['pdm_register_as_pattern']) ? '1' : '0';
         update_post_meta($post_id, '_pdm_register_as_pattern', $register_as_pattern);
 
-        // Save set as default
-        $set_as_default = isset($_POST['pdm_set_as_default']) ? '1' : '0';
-        update_post_meta($post_id, '_pdm_set_as_default', $set_as_default);
+        // Save show as starter pattern
+        $show_as_starter = isset($_POST['pdm_show_as_starter_pattern']) ? '1' : '0';
+        update_post_meta($post_id, '_pdm_show_as_starter_pattern', $show_as_starter);
 
-        // Save default for post type
-        if ($set_as_default === '1' && isset($_POST['pdm_default_for_post_type'])) {
-            $post_type = sanitize_text_field($_POST['pdm_default_for_post_type']);
+        // Save starter pattern post type (empty = all post types)
+        if ($show_as_starter === '1' && isset($_POST['pdm_starter_for_post_type'])) {
+            $post_type = sanitize_text_field($_POST['pdm_starter_for_post_type']);
 
-            // Remove default flag from other templates for this post type
             if ($post_type) {
-                $other_defaults = get_posts(array(
-                    'post_type'      => 'pdm_template',
-                    'posts_per_page' => -1,
-                    'post__not_in'   => array($post_id),
-                    'meta_query'     => array(
-                        'relation' => 'AND',
-                        array(
-                            'key'   => '_pdm_set_as_default',
-                            'value' => '1',
-                        ),
-                        array(
-                            'key'   => '_pdm_default_for_post_type',
-                            'value' => $post_type,
-                        ),
-                    ),
-                ));
-
-                foreach ($other_defaults as $other) {
-                    update_post_meta($other->ID, '_pdm_set_as_default', '0');
-                    delete_post_meta($other->ID, '_pdm_default_for_post_type');
-                }
+                update_post_meta($post_id, '_pdm_starter_for_post_type', $post_type);
+            } else {
+                delete_post_meta($post_id, '_pdm_starter_for_post_type');
             }
-
-            update_post_meta($post_id, '_pdm_default_for_post_type', $post_type);
         } else {
-            delete_post_meta($post_id, '_pdm_default_for_post_type');
+            delete_post_meta($post_id, '_pdm_starter_for_post_type');
         }
     }
 
@@ -252,126 +214,14 @@ class Template_Options
 
         wp_add_inline_script('jquery', "
 			jQuery(document).ready(function($) {
-				$('#pdm-set-as-default').on('change', function() {
+				$('#pdm-show-as-starter-pattern').on('change', function() {
 					if ($(this).is(':checked')) {
-						$('.pdm-default-post-type-field').slideDown();
+						$('.pdm-starter-post-type-field').slideDown();
 					} else {
-						$('.pdm-default-post-type-field').slideUp();
+						$('.pdm-starter-post-type-field').slideUp();
 					}
 				});
 			});
 		");
-    }
-
-    /**
-     * Insert default template content for new posts
-     *
-     * @param string   $content Default post content.
-     * @param \WP_Post $post    Post object.
-     * @return string Modified content with template blocks.
-     */
-    public function insert_default_template($content, $post)
-    {
-        // Only run for new posts (no ID yet)
-        if ($post->ID !== 0) {
-            return $content;
-        }
-
-        // Get the post type
-        $post_type = $post->post_type;
-
-        // Find the default template for this post type
-        $template_id = $this->get_default_template_for_post_type($post_type);
-
-        if (!$template_id) {
-            return $content;
-        }
-
-        // Get the template post
-        $template_post = get_post($template_id);
-
-        if (!$template_post || $template_post->post_status !== 'publish') {
-            return $content;
-        }
-
-        // Return the template's content (which contains the block markup)
-        return $template_post->post_content;
-    }
-
-    /**
-     * Insert template content via REST API (for block editor)
-     *
-     * @param \stdClass        $prepared_post An object representing a single post prepared for insertion.
-     * @param \WP_REST_Request $request       Request object.
-     * @return \stdClass Modified post object.
-     */
-    public function insert_template_via_rest($prepared_post, $request)
-    {
-        // Skip if there's already substantial content (not just empty paragraph)
-        $content = isset($prepared_post->post_content) ? trim($prepared_post->post_content) : '';
-        if (!empty($content) && $content !== '<!-- wp:paragraph --><p></p><!-- /wp:paragraph -->') {
-            return $prepared_post;
-        }
-
-        // Get post type from the prepared post
-        $post_type = $prepared_post->post_type;
-
-        // Find the default template for this post type
-        $template_id = $this->get_default_template_for_post_type($post_type);
-
-        if (!$template_id) {
-            return $prepared_post;
-        }
-
-        // Get the template post
-        $template_post = get_post($template_id);
-
-        if (!$template_post || $template_post->post_status !== 'publish') {
-            return $prepared_post;
-        }
-
-        // Set the template's content
-        $prepared_post->post_content = $template_post->post_content;
-
-        return $prepared_post;
-    }
-
-    /**
-     * Insert template content when auto-draft is created
-     *
-     * @param array $data    Post data array.
-     * @param array $postarr Post array.
-     * @return array Modified post data.
-     */
-    public function insert_template_on_autosave($data, $postarr)
-    {
-        // Only apply to auto-drafts with empty or minimal content
-        if ($data['post_status'] !== 'auto-draft') {
-            return $data;
-        }
-
-        $content = trim($data['post_content']);
-        if (!empty($content) && $content !== '<!-- wp:paragraph --><p></p><!-- /wp:paragraph -->') {
-            return $data;
-        }
-
-        // Find the default template for this post type
-        $template_id = $this->get_default_template_for_post_type($data['post_type']);
-
-        if (!$template_id) {
-            return $data;
-        }
-
-        // Get the template post
-        $template_post = get_post($template_id);
-
-        if (!$template_post || $template_post->post_status !== 'publish') {
-            return $data;
-        }
-
-        // Set the template's content
-        $data['post_content'] = $template_post->post_content;
-
-        return $data;
     }
 }
