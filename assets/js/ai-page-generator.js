@@ -65,11 +65,14 @@ this.form              = $('#pdm-ai-generator-form');
 			if (tone) {
 				this.toneName.text(tone.label);
 				this.toneDesc.text(' — ' + tone.description);
-			}			// Update the track fill colour
+			}
+
+			// Update the track fill colour
 			const pct         = ((val - 1) / 4) * 100;
-			const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--wp-admin-theme-color').trim() || '#2271b1';
+			const accentColor = getComputedStyle(this.toneSlider[0]).getPropertyValue('--pdm-accent').trim() || '#eb6a24';
 			this.toneSlider.css('background',
-				'linear-gradient(to right, ' + accentColor + ' ' + pct + '%, #ddd ' + pct + '%)');		},
+				'linear-gradient(to right, ' + accentColor + ' ' + pct + '%, #dcdfe4 ' + pct + '%)');
+		},
 
 		// ---- Reference page search -----------------------------------------
 

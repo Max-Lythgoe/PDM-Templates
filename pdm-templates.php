@@ -3,7 +3,7 @@
 /**
  * Plugin Name: PDM Templates
  * Description: Advanced template editor with block patterns, default templates, and Word document conversion
- * Version: 1.3.0
+ * Version: 1.3.1
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * Author: Performance Driven Marketing
@@ -49,6 +49,14 @@ $pdm_templates_update_checker = \YahnisElsts\PluginUpdateChecker\v5\PucFactory::
     'pdm-templates'
 );
 
+// check tokens 
+$pdm_templates_token = defined('ECODRIVEN_GITHUB_TOKEN') && \ECODRIVEN_GITHUB_TOKEN ? \ECODRIVEN_GITHUB_TOKEN
+    : (defined('PDM_GITHUB_TOKEN') && \PDM_GITHUB_TOKEN ? \PDM_GITHUB_TOKEN
+        : get_option('pdm_github_token', ''));
+if (! empty($pdm_templates_token)) {
+    $pdm_templates_update_checker->setAuthentication($pdm_templates_token);
+}
+
 add_filter('puc_request_info_result-pdm-templates', function ($info) {
     if (is_object($info)) {
         $info->icons = [
@@ -60,7 +68,7 @@ add_filter('puc_request_info_result-pdm-templates', function ($info) {
 
 
 // Define plugin constants
-define('PDM_TEMPLATES_VERSION', '1.2.0');
+define('PDM_TEMPLATES_VERSION', '1.3.1');
 define('PDM_TEMPLATES_PATH', plugin_dir_path(__FILE__));
 define('PDM_TEMPLATES_URL', plugin_dir_url(__FILE__));
 define('PDM_TEMPLATES_BASENAME', plugin_basename(__FILE__));

@@ -27,6 +27,31 @@ class AI_Page_Generator
     const GEMINI_MODEL = 'gemini-2.5-flash-lite';
 
     /**
+     * PDM knowledge base categories used for page content.
+     *
+     * STYLE first so brand voice is never the block trimmed by the character
+     * cap, then CORE for who the business is and where it works, CONVERSION for
+     * the audience, objections and FAQ-worthy questions, and OFFERINGS for the
+     * services, brands, warranties and pricing the page should describe.
+     * AUTHORITY is left out: credentials and awards carry little weight in a
+     * generated page body and it is one of the larger blocks.
+     */
+    const KB_CATEGORIES = array('STYLE', 'CORE', 'CONVERSION', 'OFFERINGS');
+
+    /**
+     * Ceiling for the knowledge base block, so a very verbose questionnaire
+     * cannot bloat every request (pages already carry site + reference context).
+     */
+    const KB_MAX_CHARS = 16000;
+
+    /**
+     * Request-scoped cache for the knowledge base block.
+     *
+     * @var string|null
+     */
+    private $kb_context_cache = null;
+
+    /**
      * Constructor
      */
     public function __construct()
@@ -68,7 +93,7 @@ class AI_Page_Generator
             'pdm-ai-page-generator',
             PDM_TEMPLATES_URL . 'assets/css/ai-page-generator.css',
             array(),
-            PDM_TEMPLATES_VERSION
+            filemtime(PDM_TEMPLATES_PATH . 'assets/css/ai-page-generator.css')
         );
 
         // Needed for the WordPress media library picker
@@ -78,7 +103,7 @@ class AI_Page_Generator
             'pdm-ai-page-generator',
             PDM_TEMPLATES_URL . 'assets/js/ai-page-generator.js',
             array('jquery'),
-            PDM_TEMPLATES_VERSION,
+            filemtime(PDM_TEMPLATES_PATH . 'assets/js/ai-page-generator.js'),
             true
         );
 
@@ -102,11 +127,11 @@ class AI_Page_Generator
                 'noImages'         => __('This template has no image slots.', 'pdm-templates'),
             ),
             'tones' => array(
-                '1' => array('slug' => 'friendly',     'label' => 'Friendly',     'description' => 'Warm, conversational, and inviting. Perfect for small businesses, community groups, and lifestyle brands.'),
-                '2' => array('slug' => 'professional', 'label' => 'Professional', 'description' => 'Formal, authoritative, and clear. Ideal for B2B websites, legal firms, and corporate landing pages.'),
-                '3' => array('slug' => 'persuasive',   'label' => 'Persuasive',   'description' => 'Bold, urgent, and benefit-driven. Best for e-commerce sales pages, product launches, and lead capture.'),
-                '4' => array('slug' => 'creative',     'label' => 'Creative',     'description' => 'Playful, witty, and distinctive. Great for agencies, portfolios, and modern startup brands.'),
-                '5' => array('slug' => 'empathetic',   'label' => 'Empathetic',   'description' => 'Compassionate, understanding, and reassuring. Suited for healthcare, counseling, and non-profit organizations.'),
+                '1' => array('slug' => 'friendly',     'label' => 'Friendly',     'description' => 'Warm and conversational.'),
+                '2' => array('slug' => 'professional', 'label' => 'Professional', 'description' => 'Formal and authoritative.'),
+                '3' => array('slug' => 'persuasive',   'label' => 'Persuasive',   'description' => 'Bold and benefit-driven.'),
+                '4' => array('slug' => 'creative',     'label' => 'Creative',     'description' => 'Playful and distinctive.'),
+                '5' => array('slug' => 'empathetic',   'label' => 'Empathetic',   'description' => 'Compassionate and reassuring.'),
             ),
         ));
     }
@@ -134,12 +159,12 @@ class AI_Page_Generator
         $api_key_configured = $this->get_api_key() !== null;
 ?>
         <div class="wrap pdm-ai-generator-wrap">
-            <h1 class="wp-heading-inline">
-                <?php esc_html_e('Generate Page with AI', 'pdm-templates'); ?>
-            </h1>
-            <p class="description" style="margin-top:8px;">
-                <?php esc_html_e('Describe the content you want and Gemini AI will generate it using your chosen template structure.', 'pdm-templates'); ?>
-            </p>
+            <div class="pdm-ai-page-header">
+                <h1><?php esc_html_e('Generate Page with AI', 'pdm-templates'); ?></h1>
+                <p class="pdm-ai-page-subtitle">
+                    <?php esc_html_e('Describe the content and Gemini will write it into your chosen template.', 'pdm-templates'); ?>
+                </p>
+            </div>
 
             <?php if (! $api_key_configured) : ?>
                 <div class="notice notice-error">
@@ -191,9 +216,6 @@ class AI_Page_Generator
                                         class="regular-text"
                                         placeholder="<?php esc_attr_e('e.g. Our Services', 'pdm-templates'); ?>"
                                         required>
-                                    <p class="description">
-                                        <?php esc_html_e('The title of the page to be created.', 'pdm-templates'); ?>
-                                    </p>
                                 </td>
                             </tr>
 
@@ -211,7 +233,7 @@ class AI_Page_Generator
                                         rows="5"
                                         placeholder="<?php esc_attr_e('Describe the content you want the AI to generate. Include your business name, key messages, tone, and any specific details…', 'pdm-templates'); ?>"></textarea>
                                     <p class="description">
-                                        <?php esc_html_e('Optional but recommended — the more detail you provide, the better the output.', 'pdm-templates'); ?>
+                                        <?php esc_html_e('Optional — more detail gives better output.', 'pdm-templates'); ?>
                                     </p>
                                 </td>
                             </tr>
@@ -233,7 +255,7 @@ class AI_Page_Generator
                                             <span><?php esc_html_e('Empathetic', 'pdm-templates'); ?></span>
                                         </div>
                                         <div id="pdm-ai-tone-info" class="pdm-ai-tone-info">
-                                            <strong id="pdm-ai-tone-name">Friendly</strong><span id="pdm-ai-tone-desc"> — Warm, conversational, and inviting. Perfect for small businesses, community groups, and lifestyle brands.</span>
+                                            <strong id="pdm-ai-tone-name">Friendly</strong><span id="pdm-ai-tone-desc"> — Warm and conversational.</span>
                                         </div>
                                     </div>
                                 </td>
@@ -256,7 +278,7 @@ class AI_Page_Generator
                                         <?php endforeach; ?>
                                     </select>
                                     <p class="description" id="pdm-ai-template-info">
-                                        <?php esc_html_e('The block template layout the generated content will be placed into.', 'pdm-templates'); ?>
+                                        <?php esc_html_e('Layout for the generated content.', 'pdm-templates'); ?>
                                     </p>
                                 </td>
                             </tr>
@@ -312,8 +334,8 @@ class AI_Page_Generator
                                         <div id="pdm-ai-ref-chips" class="pdm-ai-ref-chips"></div>
                                         <input type="hidden" id="pdm-ai-ref-ids" name="ref_page_ids" value="">
                                     </div>
-                                    <p class="description" style="margin-top:6px;">
-                                        <?php esc_html_e('Optional — select up to 3 pages. The AI will read their content as reference to match style, tone, or detail.', 'pdm-templates'); ?>
+                                    <p class="description">
+                                        <?php esc_html_e('Optional — up to 3 pages the AI reads for style and detail.', 'pdm-templates'); ?>
                                     </p>
                                 </td>
                             </tr>
@@ -323,12 +345,12 @@ class AI_Page_Generator
                                     <?php esc_html_e('Landing Page?', 'pdm-templates'); ?>
                                 </th>
                                 <td>
-                                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                    <label class="pdm-ai-check">
                                         <input type="checkbox" id="pdm-ai-landing-page" name="is_landing_page" value="1">
-                                        <strong><?php esc_html_e('This is a landing page', 'pdm-templates'); ?></strong>
+                                        <span><?php esc_html_e('This is a landing page', 'pdm-templates'); ?></span>
                                     </label>
-                                    <p class="description" style="margin-top:6px;">
-                                        <?php esc_html_e('Removes all outbound links and phone number references from the content — keeps visitors on-page for accurate lead tracking.', 'pdm-templates'); ?>
+                                    <p class="description">
+                                        <?php esc_html_e('Strips outbound links and phone numbers.', 'pdm-templates'); ?>
                                     </p>
                                 </td>
                             </tr>
@@ -336,16 +358,13 @@ class AI_Page_Generator
 
                         <!-- Image slots — populated by JS when a template is selected -->
                         <div id="pdm-ai-image-section" style="display:none;">
-                            <hr style="margin: 20px 0;">
-                            <h2 style="font-size:1.1em;margin-bottom:4px;">
+                            <hr class="pdm-ai-divider">
+                            <h2 class="pdm-ai-section-title">
                                 <?php esc_html_e('Template Images', 'pdm-templates'); ?>
                             </h2>
-                            <p class="description" style="margin-bottom:12px;">
-                                <?php esc_html_e('Assign images to the image slots in your chosen template.', 'pdm-templates'); ?>
-                            </p>
-                            <label style="display:flex;align-items:center;gap:8px;margin-bottom:16px;font-weight:600;cursor:pointer;">
+                            <label class="pdm-ai-check">
                                 <input type="checkbox" id="pdm-ai-auto-images" name="auto_images" value="1" checked>
-                                <?php esc_html_e('Automatically find relevant images from media library', 'pdm-templates'); ?>
+                                <span><?php esc_html_e('Find relevant images automatically', 'pdm-templates'); ?></span>
                             </label>
                             <div id="pdm-ai-manual-slots" style="display:none;">
                                 <div id="pdm-ai-image-slots"></div>
@@ -368,7 +387,20 @@ class AI_Page_Generator
                     <!-- Progress & Result area -->
                     <div id="pdm-ai-progress" class="pdm-ai-progress" style="display:none;">
                         <div class="pdm-ai-progress-inner">
-                            <span class="pdm-ai-spinner spinner is-active"></span>
+                            <div class="pdm-brand-loader" aria-hidden="true">
+                                <!-- Arrow 1 (shortest - left) -->
+                                <svg class="pdm-brand-loader-arrow pdm-brand-loader-arrow-1" viewBox="0 0 54 74" focusable="false">
+                                    <polygon points="27,0 54,26 42,26 42,74 12,74 12,26 0,26" fill="#e96b26" />
+                                </svg>
+                                <!-- Arrow 2 (medium - center) -->
+                                <svg class="pdm-brand-loader-arrow pdm-brand-loader-arrow-2" viewBox="0 0 54 96" focusable="false">
+                                    <polygon points="27,0 54,26 42,26 42,96 12,96 12,26 0,26" fill="#e96b26" />
+                                </svg>
+                                <!-- Arrow 3 (tallest - right) -->
+                                <svg class="pdm-brand-loader-arrow pdm-brand-loader-arrow-3" viewBox="0 0 54 118" focusable="false">
+                                    <polygon points="27,0 54,26 42,26 42,118 12,118 12,26 0,26" fill="#e96b26" />
+                                </svg>
+                            </div>
                             <span class="pdm-ai-progress-label"></span>
                         </div>
                     </div>
@@ -382,49 +414,64 @@ class AI_Page_Generator
                     if (! empty($company_ctx['company_name']) || ! empty($company_ctx['locations'])) :
                     ?>
                         <div class="card pdm-ai-company-context">
-                            <h2><?php esc_html_e('Auto-detected Company Info', 'pdm-templates'); ?></h2>
-                            <p class="description" style="margin-bottom:10px;"><?php esc_html_e('This data is automatically included in every AI prompt, along with the site\'s published pages and posts so the AI can link to relevant content.', 'pdm-templates'); ?></p>
+                            <h2><?php esc_html_e('Company Context', 'pdm-templates'); ?></h2>
+                            <p class="description"><?php esc_html_e('Sent with every prompt automatically.', 'pdm-templates'); ?></p>
                             <?php if (! empty($company_ctx['company_name'])) : ?>
-                                <p><strong><?php esc_html_e('Name:', 'pdm-templates'); ?></strong> <?php echo esc_html($company_ctx['company_name']); ?></p>
+                                <div class="pdm-ai-context-row">
+                                    <span class="pdm-ai-context-label"><?php esc_html_e('Name', 'pdm-templates'); ?></span>
+                                    <span class="pdm-ai-context-value"><?php echo esc_html($company_ctx['company_name']); ?></span>
+                                </div>
                             <?php endif; ?>
                             <?php foreach ($company_ctx['locations'] as $i => $loc) : ?>
-                                <div style="margin-top:8px;border-top:1px solid #eee;padding-top:8px;">
+                                <div class="pdm-ai-context-row">
                                     <?php if (count($company_ctx['locations']) > 1) : ?>
-                                        <strong><?php printf(esc_html__('Location %d', 'pdm-templates'), $i + 1); ?></strong><br>
+                                        <span class="pdm-ai-context-label"><?php printf(esc_html__('Location %d', 'pdm-templates'), $i + 1); ?></span>
                                     <?php endif; ?>
-                                    <?php if (! empty($loc['name'])) : ?><span><?php echo esc_html($loc['name']); ?></span><br><?php endif; ?>
-                                    <?php if (! empty($loc['phone'])) : ?><span><?php echo esc_html($loc['phone']); ?></span><br><?php endif; ?>
-                                    <?php if (! empty($loc['email'])) : ?><span><?php echo esc_html($loc['email']); ?></span><br><?php endif; ?>
-                                    <?php if (! empty($loc['address'])) : ?><span><?php echo esc_html($loc['address']); ?></span><?php endif; ?>
+                                    <span class="pdm-ai-context-value">
+                                        <?php
+                                        $location_lines = array();
+                                        foreach (array('name', 'phone', 'email', 'address') as $loc_field) {
+                                            if (! empty($loc[$loc_field])) {
+                                                $location_lines[] = esc_html($loc[$loc_field]);
+                                            }
+                                        }
+                                        echo implode('<br>', $location_lines); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped above.
+                                        ?>
+                                    </span>
                                 </div>
                             <?php endforeach; ?>
+
+                            <div class="pdm-ai-context-row pdm-ai-context-kb">
+                                <?php if (! empty($company_ctx['knowledge_base'])) : ?>
+                                    <span class="pdm-ai-context-label"><?php esc_html_e('Knowledge base', 'pdm-templates'); ?></span>
+                                    <span class="pdm-ai-context-value pdm-ai-kb-pills">
+                                        <?php foreach (self::KB_CATEGORIES as $kb_category) : ?>
+                                            <span class="pdm-ai-kb-pill"><?php echo esc_html($kb_category); ?></span>
+                                        <?php endforeach; ?>
+                                    </span>
+                                <?php else : ?>
+                                    <p class="description">
+                                        <?php
+                                        printf(
+                                            /* translators: %s: admin URL */
+                                            esc_html__('No knowledge base answers yet — add the client questionnaire in %s.', 'pdm-templates'),
+                                            '<a href="' . esc_url(admin_url('tools.php?page=pdm-plugin-manager&tab=knowledge-base')) . '">' . esc_html__('Tools → PDM Plugins → Knowledge Base', 'pdm-templates') . '</a>'
+                                        );
+                                        ?>
+                                    </p>
+                                <?php endif; ?>
+                            </div>
                         </div>
                     <?php endif; ?>
 
-                    <div class="card pdm-ai-tips">
-                        <h2><?php esc_html_e('Tips for Better Results', 'pdm-templates'); ?></h2>
-                        <ul>
-                            <li><?php esc_html_e('Describe the page purpose and any specific content you want.', 'pdm-templates'); ?></li>
-                            <li><?php esc_html_e('Specify the target audience and desired tone (professional, friendly, etc.).', 'pdm-templates'); ?></li>
-                            <li><?php esc_html_e('Mention key messages, USPs, or specific calls to action.', 'pdm-templates'); ?></li>
-                            <li><?php esc_html_e('The AI will generate sections to match your chosen template layout.', 'pdm-templates'); ?></li>
-                            <li><?php esc_html_e('Company info above is sent automatically — no need to repeat it.', 'pdm-templates'); ?></li>
-                        </ul>
-                    </div>
-
                     <div class="card pdm-ai-model-info">
                         <h2><?php esc_html_e('AI Model', 'pdm-templates'); ?></h2>
-                        <p>
-                            <strong><?php echo esc_html(self::GEMINI_MODEL); ?></strong><br>
-                            <span class="description">
-                                <?php esc_html_e('Google Gemini Flash-Lite — fast, cost-efficient generation.', 'pdm-templates'); ?>
-                            </span>
-                        </p>
+                        <p class="pdm-ai-model-name"><?php echo esc_html(self::GEMINI_MODEL); ?></p>
                         <p class="description">
                             <?php
                             printf(
                                 /* translators: %s: link to connectors settings */
-                                esc_html__('API key is sourced from your %s (Google connector).', 'pdm-templates'),
+                                esc_html__('Key from %s.', 'pdm-templates'),
                                 '<a href="' . esc_url(admin_url('options-connectors.php')) . '">' . esc_html__('WordPress Connectors', 'pdm-templates') . '</a>'
                             );
                             ?>
@@ -711,47 +758,60 @@ class AI_Page_Generator
     // =========================================================================
 
     /**
-     * Return an array of published pages and public custom post type entries
-     * that can be referenced as links in AI-generated content.
+     * Return an array of published pages and posts that can be referenced as
+     * links in AI-generated content.
      *
-     * Excludes the current page being generated (matched by title), attachments,
-     * and post types that are not intended for linking (e.g. templates, revisions).
+     * Only pages and posts are listed: internal links must point at real
+     * editorial content, not directory/CPT data such as distributors.
      *
      * @return array[] Array of ['title' => string, 'url' => string].
      */
     private function get_site_pages()
     {
-        // Collect public post types, excluding ones that aren't useful as link targets
-        $excluded_types = array('attachment', 'pdm_template', 'revision', 'nav_menu_item', 'custom_css', 'customize_changeset', 'oembed_cache', 'user_request', 'wp_block', 'wp_template', 'wp_template_part', 'wp_global_styles', 'wp_navigation', 'wp_font_family', 'wp_font_face');
-        $post_types     = array_diff(
-            array_keys(get_post_types(array('public' => true))),
-            $excluded_types
-        );
+        $post_types = array_values(array_intersect(
+            array('page', 'post'),
+            array_keys(get_post_types(array('public' => true)))
+        ));
 
         if (empty($post_types)) {
             return array();
         }
 
-        $posts = get_posts(array(
-            'post_type'      => array_values($post_types),
-            'post_status'    => 'publish',
-            'numberposts'    => 150,
-            'orderby'        => 'post_type',
-            'order'          => 'ASC',
-            'fields'         => 'ids',
-        ));
+        // Pages first — they make the strongest internal link targets.
+        $ordered_types  = array_merge(array_intersect(array('page'), $post_types), array_diff($post_types, array('page')));
+        $per_type_limit = 15;
+        $max_entries    = 30;
 
         $pages = array();
-        foreach ($posts as $post_id) {
-            $title = get_the_title($post_id);
-            $url   = get_permalink($post_id);
-            $type  = get_post_type($post_id);
-            if ($title && $url) {
-                $pages[] = array(
-                    'title'     => sanitize_text_field($title),
-                    'url'       => esc_url_raw($url),
-                    'post_type' => $type,
-                );
+        foreach ($ordered_types as $type) {
+            if (count($pages) >= $max_entries) {
+                break;
+            }
+
+            $post_ids = get_posts(array(
+                'post_type'        => $type,
+                'post_status'      => 'publish',
+                'numberposts'      => $per_type_limit,
+                'orderby'          => 'title',
+                'order'            => 'ASC',
+                'fields'           => 'ids',
+                'no_found_rows'    => true,
+                'suppress_filters' => false,
+            ));
+
+            foreach ($post_ids as $post_id) {
+                $title = get_the_title($post_id);
+                $url   = get_permalink($post_id);
+                if ($title && $url) {
+                    $pages[] = array(
+                        'title'     => sanitize_text_field($title),
+                        'url'       => esc_url_raw($url),
+                        'post_type' => $type,
+                    );
+                }
+                if (count($pages) >= $max_entries) {
+                    break;
+                }
             }
         }
 
@@ -919,9 +979,12 @@ class AI_Page_Generator
      */
     private function get_company_context()
     {
+        $kb_name = $this->get_knowledge_base_company_name();
+
         $context = array(
-            'company_name' => get_bloginfo('name'),
-            'locations'    => array(),
+            'company_name'   => '' !== $kb_name ? $kb_name : get_bloginfo('name'),
+            'locations'      => array(),
+            'knowledge_base' => $this->get_knowledge_base_context(),
         );
 
         if (function_exists('pdm_blocks_get_company_locations')) {
@@ -939,6 +1002,64 @@ class AI_Page_Generator
         }
 
         return $context;
+    }
+
+    /**
+     * Public-facing business name from the PDM knowledge base.
+     *
+     * Empty when the knowledge base (PDM Plugins Manager) is absent or has no
+     * answer, so the caller falls back to the site title.
+     *
+     * @return string
+     */
+    private function get_knowledge_base_company_name()
+    {
+        if (! function_exists('pdm_kb_get_items')) {
+            return '';
+        }
+
+        foreach (pdm_kb_get_items(array('include_restricted' => true)) as $item) {
+            $answer = trim((string) ($item['answer'] ?? ''));
+            if ('' === $answer) {
+                continue;
+            }
+            if (false !== strpos(strtolower((string) ($item['question'] ?? '')), 'business / company name')) {
+                return wp_specialchars_decode($answer, ENT_QUOTES);
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Knowledge base block for page prompts.
+     *
+     * @return string Empty when the knowledge base is missing or unanswered.
+     */
+    private function get_knowledge_base_context()
+    {
+        if (null !== $this->kb_context_cache) {
+            return $this->kb_context_cache;
+        }
+
+        $this->kb_context_cache = '';
+
+        if (! function_exists('pdm_kb_prompt_block')) {
+            return '';
+        }
+
+        $block = pdm_kb_prompt_block(
+            self::KB_CATEGORIES,
+            array(
+                'max_chars' => self::KB_MAX_CHARS,
+                'order'     => self::KB_CATEGORIES,
+                'intro'     => 'Client knowledge base (verified business facts — these take priority over the business context above):',
+            )
+        );
+
+        $this->kb_context_cache = trim((string) $block);
+
+        return $this->kb_context_cache;
     }
 
     // =========================================================================
@@ -1180,8 +1301,8 @@ class AI_Page_Generator
         }
 
         foreach ($company_context['locations'] as $i => $loc) {
-            $prefix = count($company_context['locations']) > 1 ? 'Location ' . ($i + 1) . ' — ' : '';
-            if (! empty($loc['name']))    $context_lines[] = $prefix . 'Location name: ' . $loc['name'];
+            $prefix = count($company_context['locations']) > 1 ? 'Branch ' . ($i + 1) . ' — ' : '';
+            if (! empty($loc['name']))    $context_lines[] = $prefix . 'Branch label: "' . $loc['name'] . '" (internal office name — not a city, region or service area)';
             if (! $is_landing && ! empty($loc['phone']))   $context_lines[] = $prefix . 'Phone: ' . $loc['phone'];
             if (! empty($loc['email']))   $context_lines[] = $prefix . 'Email: ' . $loc['email'];
             if (! empty($loc['address'])) $context_lines[] = $prefix . 'Address: ' . $loc['address'];
@@ -1190,6 +1311,13 @@ class AI_Page_Generator
         $company_block = empty($context_lines)
             ? ''
             : "Business context (use naturally in the content):\n" . implode("\n", $context_lines) . "\n";
+
+        // Knowledge base context — empty on sites without a filled-in questionnaire.
+        $kb_block = '';
+        $kb       = $this->get_knowledge_base_context();
+        if ('' !== $kb) {
+            $kb_block = $kb . "\n\nUse these facts for the services, materials, terminology, objections and questions this page covers. Where they disagree with the business context above, the knowledge base is correct. Follow the selected writing tone for register, but use the knowledge base for preferred wording and for phrases to avoid. Never invent a service, brand, warranty, price, credential or service area that is not listed.\n";
+        }
 
         // Resolve the post type label and build a post-type context note
         $pt_object    = get_post_type_object($post_type);
@@ -1217,7 +1345,7 @@ class AI_Page_Generator
         // Also list same-type pages as reference context (not for linking, but for knowing what the site offers)
         if (! empty($by_type[$post_type])) {
             $same_label    = $pt_object ? $pt_object->labels->name : $pt_label . 's';
-            $pages_lines[] = "Other {$same_label} on this site (use as context for what this business offers in other locations/areas — do NOT link to them unless truly relevant):";
+            $pages_lines[] = "Other {$same_label} on this site (use as context for what this business offers in other locations/areas — link to them when it genuinely helps the reader):";
             foreach ($by_type[$post_type] as $p) {
                 $pages_lines[] = '  - ' . $p['title'] . ': ' . $p['url'];
             }
@@ -1228,9 +1356,19 @@ class AI_Page_Generator
 
         // Build reference content block from selected pages
         $reference_block = $this->get_reference_content($ref_page_ids);
+
         $contact_rules = $is_landing
-            ? "- This is a LANDING PAGE: do NOT include any hyperlinks or anchor tags anywhere in the content.\n- Do NOT reference the company phone number anywhere in the content — keep visitors on-page for lead tracking."
-            : "- Weave the company name, phone number, and email naturally into the content ONLY IF relevant\n- Where relevant, link to site pages from \"Site content\" above using HTML anchor tags: <a href=\"URL\">link text</a>";
+            ? "- Do NOT reference the company phone number anywhere in the content — keep visitors on-page for lead tracking."
+            : "- Weave the company name, phone number, and email naturally into the content ONLY IF relevant";
+
+        // Internal links are required on every page except landing pages.
+        $links_rule = $is_landing
+            ? "- This is a LANDING PAGE: do NOT include any hyperlinks or anchor tags anywhere in the content."
+            : "- INTERNAL LINKS (required): include at least 3 and at most 6 internal links in the body text of this page. This is a hard requirement, not optional, so a page with fewer than 3 links is not finished. Take every link from the \"Site content\" lists above — they list published pages and posts only — and copy each URL exactly as written. Write them as HTML anchors: <a href=\"FULL-URL\">descriptive anchor text</a>. Spread the links across different sections instead of clustering them in one paragraph, and make the anchor text describe the destination (for example \"the services we offer\" or \"our recent work\") — never \"click here\", never a bare URL. Never link to the page being generated, never point two links at the same URL, and never invent or guess a URL.";
+
+        $final_link_check = $is_landing
+            ? "- Final check before you answer: there must be ZERO <a href=\"...\"> tags in the content. If you included any, delete them and return the corrected JSON."
+            : "- Final check before you answer: count the <a href=\"...\"> tags in your paragraphs. There must be 3 to 6 of them. If there are fewer than 3, add more internal links from the \"Site content\" lists and return the corrected JSON.";
 
         /* Build the full prompt. The JSON schema is embedded so the model knows exactly what to produce. */
         return <<<PROMPT
@@ -1239,7 +1377,7 @@ You are a professional web content writer. Generate structured content for a Wor
 Page title: {$page_name}
 {$pt_note}Content brief: {$description}
 
-{$company_block}{$pages_block}{$reference_block}{$hero_note}Generate content for exactly {$section_count} section(s) as follows:
+{$company_block}{$kb_block}{$pages_block}{$reference_block}{$hero_note}Generate content for exactly {$section_count} section(s) as follows:
 {$sections_instruction}
 
 Respond with ONLY a single valid JSON object — no markdown fences, no explanatory text, nothing else.
@@ -1272,10 +1410,13 @@ Rules:
 - Do not start two consecutive sentences with the same word.
 - Write as a knowledgeable human would — concrete, specific, and direct.
 {$contact_rules}
+{$links_rule}
+- The business context may list branch labels in quotes (for example "PDM Utah"). Those are internal office names, NOT cities, towns or regions: never write a sentence like "whether you're in PDM Utah" and never treat a label as a place. When a place name is needed, use the city and state from that branch's address line (for example "Layton, Utah"), or refer to the team instead ("our Utah team").
 - You may reference the city and state/region the business is located in, but do NOT include the full street address in any content
 - paragraphs arrays are used for normal content sections
 - accordions arrays (with isFAQ: true) are used for FAQ sections only
 - Each paragraph should be 2–4 sentences long
+{$final_link_check}
 - Return ONLY the JSON object
 PROMPT;
     }
